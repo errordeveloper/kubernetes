@@ -147,7 +147,7 @@ func NewCmdManualBootstrapJoinNode(out io.Writer, params *kubeadmapi.BootstrapPa
 				return
 			}
 
-			kubeconfig, err := kubenode.PerformTLSBootstrap(params)
+			kubeconfig, err := kubenode.PerformTLSBootstrapFromParams(params)
 			if err != nil {
 				out.Write([]byte(fmt.Sprintf("Failed to perform TLS bootstrap: %s\n", err)))
 				return

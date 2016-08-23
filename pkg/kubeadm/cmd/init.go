@@ -17,17 +17,54 @@ limitations under the License.
 package kubecmd
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
+
 	kubeadmapi "k8s.io/kubernetes/pkg/kubeadm/api"
+	kubemaster "k8s.io/kubernetes/pkg/kubeadm/master"
+	"k8s.io/kubernetes/pkg/kubeadm/tlsutil"
+	kubeadmutil "k8s.io/kubernetes/pkg/kubeadm/util"
 )
 
 func NewCmdInit(out io.Writer, params *kubeadmapi.BootstrapParams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Run this on the first server you deploy onto.",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if params.Discovery.ListenIP == "" {
+				ip, err := kubeadmutil.GetDefaultHostIP()
+				if err != nil {
+					return err
+				}
+				params.Discovery.ListenIP = ip
+			}
+			if err := kubemaster.CreateTokenAuthFile(params); err != nil {
+				return err
+			}
+			if err := kubemaster.WriteStaticPodManifests(params); err != nil {
+				return err
+			}
+			caKey, caCert, err := kubemaster.CreatePKIAssets(params)
+			if err != nil {
+				return err
+			}
+			kubeconfigs, err := kubemaster.CreateCertsAndConfigForClients(params, []string{"kubelet", "admin"}, caKey, caCert)
+			if err != nil {
+				return err
+			}
+			for name, kubeconfig := range kubeconfigs {
+				if err := kubeadmutil.WriteKubeconfigIfNotExists(params, name, kubeconfig); err != nil {
+					out.Write([]byte(fmt.Sprintf("Unable to write admin for master:\n%s\n", err)))
+					return nil
+				}
+			}
+
+			// TODO: move Jose server into a separate command or static pod or whatever
+			kubemaster.NewDiscoveryEndpoint(params, string(tlsutil.EncodeCertificatePEM(caCert)))
+
+			return nil
 		},
 	}
 	return cmd
