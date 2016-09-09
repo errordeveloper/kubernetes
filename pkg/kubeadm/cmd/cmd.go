@@ -73,7 +73,7 @@ func NewKubeadmCommand(f *cmdutil.Factory, in io.Reader, out, err io.Writer, env
 	// TODO(phase2) detect interactive vs non-interactive use and adjust output accordingly
 	// i.e. make it automation friendly
 	//
-	// TODO(phase2) create an bastraction that defines files and the content that needs to
+	// TODO(phase2) create an abstraction that defines files and the content that needs to
 	// be written to disc and write it all in one go at the end as we have a lot of
 	// crapy little files written from different parts of this code; this could also
 	// be useful for testing
