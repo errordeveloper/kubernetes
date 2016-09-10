@@ -21,16 +21,16 @@ import (
 )
 
 type KubeadmConfig struct {
+	InitFlags
+	JoinFlags
+	ManualFlags
 	Secrets struct {
 		GivenToken  string // dot-separated `<TokenID>.<Token>` set by the user
 		TokenID     string // optional on master side, will be generated if not specified
 		Token       []byte // optional on master side, will be generated if not specified
 		BearerToken string // set based on Token
 	}
-	InitFlags   *InitFlags
-	JoinFlags   *JoinFlags
-	ManualFlags *ManualFlags
-	EnvParams   map[string]string // TODO(phase2) this is likely to be come componentconfig
+	EnvParams map[string]string // TODO(phase2) this is likely to be come componentconfig
 }
 
 // TODO(phase2) should we add validatin funcs on these structs?
@@ -43,6 +43,36 @@ type InitFlags struct {
 	Services struct {
 		CIDR      net.IPNet
 		DNSDomain string
+	}
+	CloudProvider string
+}
+
+const (
+	DefaultServiceDNSDomain   = "myorg.internal"
+	DefaultServicesCIDRString = "100.64.0.0/12"
+)
+
+var (
+	DefaultServicesCIDR  *net.IPNet
+	ListOfCloudProviders = []string{
+		"aws",
+		"azure",
+		"cloudstack",
+		"gce",
+		"mesos",
+		"openstack",
+		"ovirt",
+		"rackspace",
+		"vsphere",
+	}
+	SupportedCLoudProviders map[string]bool
+)
+
+func init() {
+	_, DefaultServicesCIDR, _ = net.ParseCIDR(DefaultServicesCIDRString)
+	SupportedCLoudProviders = make(map[string]bool, len(ListOfCloudProviders))
+	for _, v := range ListOfCloudProviders {
+		SupportedCLoudProviders[v] = true
 	}
 }
 

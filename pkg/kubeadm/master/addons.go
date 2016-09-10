@@ -34,12 +34,9 @@ func createKubeProxyPodSpec(s *kubeadmapi.KubeadmConfig) api.PodSpec {
 	return api.PodSpec{
 		SecurityContext: &api.PodSecurityContext{HostNetwork: true},
 		Containers: []api.Container{{
-			Name:  "kube-proxy",
-			Image: images.GetCoreImage(images.KubeProxyImage, s.EnvParams["hyperkube_image"]),
-			Command: append(getImageEntrypoint("proxy"), []string{
-				"--kubeconfig=/run/kubeconfig",
-				s.EnvParams["component_loglevel"],
-			}...),
+			Name:            kubeProxy,
+			Image:           images.GetCoreImage(images.KubeProxyImage, s.EnvParams["hyperkube_image"]),
+			Command:         append(getComponentCommand("proxy", s), "--kubeconfig=/run/kubeconfig"),
 			SecurityContext: &api.SecurityContext{Privileged: &privilegedTrue},
 			VolumeMounts: []api.VolumeMount{
 				{
@@ -226,7 +223,7 @@ func createKubeDNSServiceSpec(s *kubeadmapi.KubeadmConfig) (*api.ServiceSpec, er
 }
 
 func CreateEssentialAddons(s *kubeadmapi.KubeadmConfig, client *clientset.Clientset) error {
-	kubeProxyDaemonSet := NewDaemonSet("kube-proxy", createKubeProxyPodSpec(s))
+	kubeProxyDaemonSet := NewDaemonSet(kubeProxy, createKubeProxyPodSpec(s))
 	SetMasterTaintTolerations(&kubeProxyDaemonSet.Spec.Template.ObjectMeta)
 
 	if _, err := client.Extensions().DaemonSets(api.NamespaceSystem).Create(kubeProxyDaemonSet); err != nil {

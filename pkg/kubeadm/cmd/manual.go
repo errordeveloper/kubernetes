@@ -66,7 +66,6 @@ var (
 // it is too difficult to support
 
 func NewCmdManual(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Command {
-	s.InitFlags = &kubeadmapi.InitFlags{}
 	cmd := &cobra.Command{
 		Use:   "manual",
 		Short: "Advanced, less-automated functionality, for power users.",
@@ -94,7 +93,6 @@ func NewCmdManualBootstrap(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Co
 }
 
 func NewCmdManualBootstrapInitMaster(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Command {
-	s.InitFlags = &kubeadmapi.InitFlags{}
 	advertiseAddrs := &[]string{}
 	cmd := &cobra.Command{
 		Use:   "init-master",
@@ -200,7 +198,6 @@ func RunManualBootstrapInitMaster(out io.Writer, cmd *cobra.Command, args []stri
 }
 
 func NewCmdManualBootstrapJoinNode(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Command {
-	s.ManualFlags = &kubeadmapi.ManualFlags{}
 	cmd := &cobra.Command{
 		Use:   "join-node",
 		Short: "Manually bootstrap a node 'out-of-band', joining it into a cluster with extant control plane",

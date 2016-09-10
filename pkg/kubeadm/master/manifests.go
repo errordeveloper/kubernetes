@@ -36,24 +36,27 @@ import (
 // init master` and `kubeadm manual bootstrap master` can get going.
 
 const (
-	SERVICE_CLUSTER_IP_RANGE = "--service-cluster-ip-range=100.64.0.0/12"
-	CLUSTER_NAME             = "--cluster-name=kubernetes"
-	MASTER                   = "--master=127.0.0.1:8080"
-)
+	DefaultClusterName = "--cluster-name=kubernetes"
 
-var useHyperkube = false
+	etcd                  = "etcd"
+	apiServer             = "apiserver"
+	controllerManager     = "controller-manager"
+	scheduler             = "scheduler"
+	proxy                 = "proxy"
+	kubeAPIServer         = "kube-apiserver"
+	kubeControllerManager = "kube-controller-manager"
+	kubeScheduler         = "kube-scheduler"
+	kubeProxy             = "kube-proxy"
+)
 
 // TODO look into what this really means, scheduler prints it for some reason
 //
 //E0817 17:53:22.242658       1 event.go:258] Could not construct reference to: '&api.Endpoints{TypeMeta:unversioned.TypeMeta{Kind:"", APIVersion:""}, ObjectMeta:api.ObjectMeta{Name:"kube-scheduler", GenerateName:"", Namespace:"kube-system", SelfLink:"", UID:"", ResourceVersion:"", Generation:0, CreationTimestamp:unversioned.Time{Time:time.Time{sec:0, nsec:0, loc:(*time.Location)(nil)}}, DeletionTimestamp:(*unversioned.Time)(nil), DeletionGracePeriodSeconds:(*int64)(nil), Labels:map[string]string(nil), Annotations:map[string]string(nil), OwnerReferences:[]api.OwnerReference(nil), Finalizers:[]string(nil)}, Subsets:[]api.EndpointSubset(nil)}' due to: 'selfLink was empty, can't make reference'. Will not report event: 'Normal' '%v became leader' 'moby'
 
 func WriteStaticPodManifests(s *kubeadmapi.KubeadmConfig) error {
-	if s.EnvParams["hyperkube_image"] != "" {
-		useHyperkube = true
-	}
 	staticPodSpecs := map[string]api.Pod{
 		// TODO this needs a volume
-		"etcd": componentPod(api.Container{
+		etcd: componentPod(api.Container{
 			Command: []string{
 				"/usr/local/bin/etcd",
 				"--listen-client-urls=http://127.0.0.1:2379",
@@ -62,58 +65,30 @@ func WriteStaticPodManifests(s *kubeadmapi.KubeadmConfig) error {
 			},
 			Image:         images.GetCoreImage(images.KubeEtcdImage, s.EnvParams["etcd_image"]),
 			LivenessProbe: componentProbe(2379, "/health"),
-			Name:          "etcd-server",
+			Name:          etcd,
 			Resources:     componentResources("200m"),
 		}),
 		// TODO bind-mount certs in
-		"kube-apiserver": componentPod(api.Container{
-			Name:  "kube-apiserver",
-			Image: images.GetCoreImage(images.KubeApiServerImage, s.EnvParams["hyperkube_image"]),
-			Command: append(getImageEntrypoint("apiserver"), []string{
-				"--address=127.0.0.1",
-				"--etcd-servers=http://127.0.0.1:2379",
-				"--admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,ResourceQuota",
-				SERVICE_CLUSTER_IP_RANGE,
-				"--service-account-key-file=/etc/kubernetes/pki/apiserver-key.pem",
-				"--client-ca-file=/etc/kubernetes/pki/ca.pem",
-				"--tls-cert-file=/etc/kubernetes/pki/apiserver.pem",
-				"--tls-private-key-file=/etc/kubernetes/pki/apiserver-key.pem",
-				"--secure-port=443",
-				"--allow-privileged",
-				s.EnvParams["component_loglevel"],
-				"--token-auth-file=/etc/kubernetes/pki/tokens.csv",
-			}...),
+		kubeAPIServer: componentPod(api.Container{
+			Name:          kubeAPIServer,
+			Image:         images.GetCoreImage(images.KubeApiServerImage, s.EnvParams["hyperkube_image"]),
+			Command:       getComponentCommand(apiServer, s),
 			VolumeMounts:  []api.VolumeMount{pkiVolumeMount()},
 			LivenessProbe: componentProbe(8080, "/healthz"),
 			Resources:     componentResources("250m"),
 		}, pkiVolume(s)),
-		"kube-controller-manager": componentPod(api.Container{
-			Name:  "kube-controller-manager",
-			Image: images.GetCoreImage(images.KubeControllerManagerImage, s.EnvParams["hyperkube_image"]),
-			Command: append(getImageEntrypoint("controller-manager"), []string{
-				"--leader-elect",
-				MASTER,
-				CLUSTER_NAME,
-				"--root-ca-file=/etc/kubernetes/pki/ca.pem",
-				"--service-account-private-key-file=/etc/kubernetes/pki/apiserver-key.pem",
-				"--cluster-signing-cert-file=/etc/kubernetes/pki/ca.pem",
-				"--cluster-signing-key-file=/etc/kubernetes/pki/ca-key.pem",
-				"--insecure-experimental-approve-all-kubelet-csrs-for-group=system:kubelet-bootstrap",
-				"--cluster-cidr=10.2.0.0/16",
-				s.EnvParams["component_loglevel"],
-			}...),
+		kubeControllerManager: componentPod(api.Container{
+			Name:          kubeControllerManager,
+			Image:         images.GetCoreImage(images.KubeControllerManagerImage, s.EnvParams["hyperkube_image"]),
+			Command:       getComponentCommand(controllerManager, s),
 			VolumeMounts:  []api.VolumeMount{pkiVolumeMount()},
 			LivenessProbe: componentProbe(10252, "/healthz"),
 			Resources:     componentResources("200m"),
 		}, pkiVolume(s)),
-		"kube-scheduler": componentPod(api.Container{
-			Name:  "kube-scheduler",
-			Image: images.GetCoreImage(images.KubeSchedulerImage, s.EnvParams["hyperkube_image"]),
-			Command: append(getImageEntrypoint("scheduler"), []string{
-				"--leader-elect",
-				MASTER,
-				s.EnvParams["component_loglevel"],
-			}...),
+		kubeScheduler: componentPod(api.Container{
+			Name:          kubeScheduler,
+			Image:         images.GetCoreImage(images.KubeSchedulerImage, s.EnvParams["hyperkube_image"]),
+			Command:       getComponentCommand(scheduler, s),
 			LivenessProbe: componentProbe(10251, "/healthz"),
 			Resources:     componentResources("100m"),
 		}),
@@ -194,10 +169,51 @@ func componentPod(container api.Container, volumes ...api.Volume) api.Pod {
 	}
 }
 
-func getImageEntrypoint(component string) []string {
-	if useHyperkube {
-		return []string{"/hyperkube", component}
+func getComponentCommand(component string, s *kubeadmapi.KubeadmConfig) (command []string) {
+	baseFalgs := map[string][]string{
+		apiServer: []string{
+			"--address=127.0.0.1",
+			"--etcd-servers=http://127.0.0.1:2379",
+			"--admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,ResourceQuota",
+			"--service-cluster-ip-range=" + s.InitFlags.Services.CIDR.String(),
+			"--service-account-key-file=/etc/kubernetes/pki/apiserver-key.pem",
+			"--client-ca-file=/etc/kubernetes/pki/ca.pem",
+			"--tls-cert-file=/etc/kubernetes/pki/apiserver.pem",
+			"--tls-private-key-file=/etc/kubernetes/pki/apiserver-key.pem",
+			"--secure-port=443",
+			"--allow-privileged",
+			"--token-auth-file=/etc/kubernetes/pki/tokens.csv",
+		},
+		controllerManager: []string{
+			"--leader-elect",
+			"--master=127.0.0.1:8080",
+			DefaultClusterName,
+			"--root-ca-file=/etc/kubernetes/pki/ca.pem",
+			"--service-account-private-key-file=/etc/kubernetes/pki/apiserver-key.pem",
+			"--cluster-signing-cert-file=/etc/kubernetes/pki/ca.pem",
+			"--cluster-signing-key-file=/etc/kubernetes/pki/ca-key.pem",
+			"--insecure-experimental-approve-all-kubelet-csrs-for-group=system:kubelet-bootstrap",
+			"--cluster-cidr=" + s.InitFlags.Services.CIDR.String(),
+		},
+		scheduler: []string{
+			"--leader-elect",
+			"--master=127.0.0.1:8080",
+		},
+		proxy: []string{},
 	}
 
-	return []string{"/usr/local/bin/kube-" + component}
+	if s.EnvParams["hyperkube_image"] != "" {
+		command = []string{"/hyperkube", component}
+	} else {
+		command = []string{"/usr/local/bin/kube-" + component}
+	}
+
+	command = append(command, s.EnvParams["component_loglevel"])
+	command = append(command, baseFalgs[component]...)
+
+	if component == controllerManager && s.InitFlags.CloudProvider != "" {
+		command = append(command, "--cloud-provider="+s.InitFlags.CloudProvider)
+	}
+
+	return
 }

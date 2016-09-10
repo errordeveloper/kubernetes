@@ -42,7 +42,6 @@ var (
 )
 
 func NewCmdJoin(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Command {
-	s.JoinFlags = &kubeadmapi.JoinFlags{}
 	cmd := &cobra.Command{
 		Use:   "join",
 		Short: "Run this on other servers to join an existing cluster.",

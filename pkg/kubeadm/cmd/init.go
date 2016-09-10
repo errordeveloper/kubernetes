@@ -42,7 +42,6 @@ var (
 )
 
 func NewCmdInit(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Command {
-	s.InitFlags = &kubeadmapi.InitFlags{}
 	advertiseAddrs := &[]string{}
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -58,28 +57,31 @@ func NewCmdInit(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Command {
 		`(optional) Shared secret used to secure bootstrap. Will be generated and displayed if not provided.`,
 	)
 	cmd.PersistentFlags().StringSliceVar(
-		advertiseAddrs, "api-advertise-addr", nil,
+		advertiseAddrs, "api-advertise-addr", []string{},
 		`(optional) IP address to advertise, in case autodetection fails.`,
 	)
 	cmd.PersistentFlags().StringSliceVar(
 		&s.InitFlags.API.ExternalDNSName, "api-external-dns-name", []string{},
 		`(optional) DNS name to advertise, in case you have configured one yourself.`,
 	)
-	_, defaultServicesCIDR, _ := net.ParseCIDR("100.64.0.0/12")
+
 	cmd.PersistentFlags().IPNetVar(
-		&s.InitFlags.Services.CIDR, "service-cidr", *defaultServicesCIDR,
+		&s.InitFlags.Services.CIDR, "service-cidr", *kubeadmapi.DefaultServicesCIDR,
 		`(optional) use alterantive range of IP address for service VIPs, e.g. "10.16.0.0/12"`,
 	)
 	cmd.PersistentFlags().StringVar(
-		&s.InitFlags.Services.DNSDomain, "service-dns-domain", "cluster.local",
+		&s.InitFlags.Services.DNSDomain, "service-dns-domain", kubeadmapi.DefaultServiceDNSDomain,
 		`(optional) use alterantive domain name for services, e.g. "myorg.internal"`,
+	)
+	cmd.PersistentFlags().StringVar(
+		&s.InitFlags.CloudProvider, "cloud-provider", "",
+		`(optional) enable cloud proiver features (external load-balancers, storage, etc)`,
 	)
 
 	return cmd
 }
 
 func RunInit(out io.Writer, cmd *cobra.Command, args []string, s *kubeadmapi.KubeadmConfig, advertiseAddrs *[]string) error {
-
 	// Auto-detect the IP
 	if len(*advertiseAddrs) == 0 {
 		// TODO(phase1+) perhaps we could actually grab eth0 and eth1
@@ -96,7 +98,13 @@ func RunInit(out io.Writer, cmd *cobra.Command, args []string, s *kubeadmapi.Kub
 			}
 			s.InitFlags.API.AdvertiseAddrs = append(s.InitFlags.API.AdvertiseAddrs, addr)
 		}
+	}
 
+	if s.InitFlags.CloudProvider != "" {
+		// TODO(phase2) we should be able to auto-detect it and check whether things like IAM roles are correct
+		if _, ok := kubeadmapi.SupportedCLoudProviders[s.InitFlags.CloudProvider]; !ok {
+			return fmt.Errorf("<cmd/init> cloud provider %q is not supported, you can use any of %v, or leave it unset", s.InitFlags.CloudProvider, kubeadmapi.ListOfCloudProviders)
+		}
 	}
 
 	if err := kubemaster.CreateTokenAuthFile(s); err != nil {
