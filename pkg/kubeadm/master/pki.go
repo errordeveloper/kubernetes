@@ -28,12 +28,6 @@ import (
 	"k8s.io/kubernetes/pkg/util/crypto"
 )
 
-/*
-func errorf(f string, err error, vargs ...string) error {
-	return fmt.Errorf("<master/pki> %s [%s]", fmt.Sprintf(f, v...), err)
-}
-*/
-
 func newCertificateAuthority() (*rsa.PrivateKey, *x509.Certificate, error) {
 	key, err := tlsutil.NewPrivateKey()
 	if err != nil {
