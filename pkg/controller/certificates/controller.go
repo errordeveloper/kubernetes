@@ -240,7 +240,7 @@ func (cc *CertificateController) maybeAutoApproveCSR(csr *certificates.Certifica
 		return csr, nil
 	}
 
-	x509cr, err := certutil.ParseCertificateRequest(csr)
+	x509cr, err := certutil.ParseCSR(csr)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("unable to parse csr %q: %v", csr.Name, err))
 		return csr, nil
