@@ -45,6 +45,9 @@ type InitFlags struct {
 		CIDR      net.IPNet
 		DNSDomain string
 	}
+	PodNetwork struct {
+		CIDR net.IPNet
+	}
 	CloudProvider string
 	Schedulable   bool
 }
