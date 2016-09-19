@@ -51,7 +51,7 @@ func NewKubeadmCommand(f *cmdutil.Factory, in io.Reader, out, err io.Writer, env
 			    ┌──────────────────────────────────────────────────────────┐
 			    │  On the first machine                                    │
 			    ├──────────────────────────────────────────────────────────┤
-			    │ master# kubeadm init master                              │
+			    │ master# kubeadm init                                     │
 			    │ Your token is: <token>                                   │
 			    └──────────────────────────────────────────────────────────┘
 

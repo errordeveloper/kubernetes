@@ -35,17 +35,18 @@ type KubeadmConfig struct {
 
 // TODO(phase2) should we add validatin funcs on these structs?
 
+// InitFlags holds values for "kubeadm init" command flags.
 type InitFlags struct {
 	API struct {
-		AdvertiseAddrs  []net.IP
-		ExternalDNSName []string
+		AdvertiseAddrs   []net.IP
+		ExternalDNSNames []string
 	}
 	Services struct {
 		CIDR      net.IPNet
 		DNSDomain string
 	}
 	CloudProvider string
-	Schedulable bool
+	Schedulable   bool
 }
 
 const (
