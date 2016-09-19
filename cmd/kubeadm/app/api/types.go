@@ -20,6 +20,7 @@ import (
 	"net"
 )
 
+// KubeadmConfig TODO add description
 type KubeadmConfig struct {
 	InitFlags
 	JoinFlags
@@ -32,7 +33,7 @@ type KubeadmConfig struct {
 	EnvParams map[string]string // TODO(phase2) this is likely to be come componentconfig
 }
 
-// TODO(phase2) should we add validatin funcs on these structs?
+// TODO(phase2) should we add validation functions for these structs?
 
 // InitFlags holds values for "kubeadm init" command flags.
 type InitFlags struct {
@@ -82,8 +83,9 @@ type JoinFlags struct {
 	MasterAddrs []net.IP
 }
 
+// ClusterInfo TODO add description
 type ClusterInfo struct {
-	// TODO(pahse1?) this may become simply `api.Config`
+	// TODO(phase1?) this may become simply `api.Config`
 	CertificateAuthorities []string `json:"certificateAuthorities"`
 	Endpoints              []string `json:"endpoints"`
 }

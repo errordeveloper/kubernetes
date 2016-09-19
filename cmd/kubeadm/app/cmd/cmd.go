@@ -31,9 +31,9 @@ import (
 func NewKubeadmCommand(f *cmdutil.Factory, in io.Reader, out, err io.Writer, envParams map[string]string) *cobra.Command {
 	cmds := &cobra.Command{
 		Use:   "kubeadm",
-		Short: "kubeadm: bootstrap a secure kubernetes cluster easily.",
+		Short: "kubeadm: easily bootstrap a secure Kubernetes cluster.",
 		Long: dedent.Dedent(`
-			kubeadm: bootstrap a secure kubernetes cluster easily.
+			kubeadm: easily bootstrap a secure Kubernetes cluster.
 
 			    ┌──────────────────────────────────────────────────────────┐
 			    │ KUBEADM IS ALPHA, DO NOT USE IT FOR PRODUCTION CLUSTERS! │

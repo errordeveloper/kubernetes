@@ -19,23 +19,22 @@ package node
 import (
 	"fmt"
 	"io/ioutil"
-	"strings"
 	"os"
+	"strings"
 
+	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/api"
+	kubeadmutil "k8s.io/kubernetes/cmd/kubeadm/app/util"
 	"k8s.io/kubernetes/pkg/apis/certificates"
 	unversionedcertificates "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/certificates/unversioned"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/client/typed/discovery"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
-	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/api"
-	kubeadmutil "k8s.io/kubernetes/cmd/kubeadm/app/util"
 	"k8s.io/kubernetes/pkg/kubelet/util/csr"
 	certutil "k8s.io/kubernetes/pkg/util/cert"
 )
 
-
-// Create a restful client for doing the certificate signing request.
+// PerformTLSBootstrap creates a RESTful client in order to execute certificate signing request.
 func PerformTLSBootstrap(s *kubeadmapi.KubeadmConfig, apiEndpoint string, caCert []byte) (*clientcmdapi.Config, error) {
 	// TODO try all the api servers until we find one that works
 	bareClientConfig := kubeadmutil.CreateBasicClientConfig("kubernetes", apiEndpoint, caCert)

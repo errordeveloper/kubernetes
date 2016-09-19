@@ -41,14 +41,12 @@ the ones supported by controller-manager, namely `"aws"`, `"azure"`, `"cloudstac
 
 ***TODO(phase1+)***
 
-- `--api-bind-addr=<ip>`
+- `--api-bind-address=<ip>`
 - `--api-bind-port=<port>`
 
 ***TODO(phase2)***
 
 - `--api-bind-loopback-unsecure=<bool>`
-
-***TODO(pahse2)***
 
 - `--prefer-private-network=<bool>`
 - `--prefer-public-network=<bool>`
