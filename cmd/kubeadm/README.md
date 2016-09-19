@@ -55,6 +55,15 @@ the ones supported by controller-manager, namely `"aws"`, `"azure"`, `"cloudstac
 
 ### `kubeadm join`
 
+`kubeadm join` has one mandatory flag, the token used to secure cluster bootstrap, and one mandatory argument, the master IP address.
+Here's an example on how to use it:
+
+`kubeadm join --token=the_secret_token 192.168.1.1`
+
+- `--token=<token>`
+
+By default, when `kubeadm init` runs, a token is generated and revealed in the output. That's the token you should use here.
+
 # User Experience Considerations
 
 > ***TODO*** _Move this into the design document

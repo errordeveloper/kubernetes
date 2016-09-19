@@ -78,6 +78,7 @@ func init() {
 	}
 }
 
+// JoinFlags holds values for "kubeadm join" command flags.
 type JoinFlags struct {
 	MasterAddrs []net.IP
 }
