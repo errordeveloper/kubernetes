@@ -18,9 +18,7 @@ package node
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
-	"strings"
 
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/api"
 	kubeadmutil "k8s.io/kubernetes/cmd/kubeadm/app/util"
