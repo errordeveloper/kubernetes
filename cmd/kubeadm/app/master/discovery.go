@@ -73,7 +73,7 @@ func newKubeDiscoveryPodSpec(s *kubeadmapi.KubeadmConfig) api.PodSpec {
 		Containers: []api.Container{{
 			Name:    kubeDiscoverynName,
 			Image:   s.EnvParams["discovery_image"],
-			Command: []string{"/usr/bin/kube-discovery"},
+			Command: []string{"/usr/local/bin/kube-discovery"},
 			VolumeMounts: []api.VolumeMount{{
 				Name:      kubeDiscoverySecretName,
 				MountPath: "/tmp/secret", // TODO use a shared constant
