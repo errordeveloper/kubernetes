@@ -35,7 +35,7 @@ var (
 	initDoneMsgf = dedent.Dedent(`
 		Kubernetes master initialised successfully!
 
-		You can now join any number of nodes by running the following on each node:
+		You can now join any number of machines by running the following on each node:
 
 		kubeadm join --token %s %s
 		`)
@@ -46,7 +46,7 @@ func NewCmdInit(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Command {
 	advertiseAddrs := &[]string{}
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Run this on the first server you deploy onto.",
+		Short: "Run this on the first machine.",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := RunInit(out, cmd, args, s, advertiseAddrs)
 			cmdutil.CheckErr(err) // TODO(phase1+) append alpha warning with bugs URL etc

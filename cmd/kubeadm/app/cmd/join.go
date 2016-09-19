@@ -37,7 +37,7 @@ var (
 		  received.
 		* Kubelet informed of new secure connection details.
 
-		Run 'kubectl get nodes' on the master to see this node join.
+		Run 'kubectl get nodes' on the master to see this machine join.
 		`)
 )
 
@@ -45,7 +45,7 @@ var (
 func NewCmdJoin(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "join",
-		Short: "Run this on any node you'd wish to join an existing cluster.",
+		Short: "Run this on any machine you wish to join an existing cluster.",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := RunJoin(out, cmd, args, s)
 			cmdutil.CheckErr(err)
