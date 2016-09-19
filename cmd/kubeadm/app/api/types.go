@@ -23,7 +23,6 @@ import (
 type KubeadmConfig struct {
 	InitFlags
 	JoinFlags
-	ManualFlags
 	Secrets struct {
 		GivenToken  string // dot-separated `<TokenID>.<Token>` set by the user
 		TokenID     string // optional on master side, will be generated if not specified
@@ -81,14 +80,6 @@ func init() {
 // JoinFlags holds values for "kubeadm join" command flags.
 type JoinFlags struct {
 	MasterAddrs []net.IP
-}
-
-// TODO(phase1?) we haven't decided whether manual sub commands should get merged into  main commands...
-type ManualFlags struct {
-	ApiServerURLs string // comma separated
-	CaCertFile    string
-	BearerToken   string // set based on Token
-	ListenIP      net.IP // optional IP for master to listen on, rather than autodetect
 }
 
 type ClusterInfo struct {

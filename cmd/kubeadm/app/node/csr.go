@@ -34,14 +34,6 @@ import (
 	certutil "k8s.io/kubernetes/pkg/util/cert"
 )
 
-func PerformTLSBootstrapFromConfig(s *kubeadmapi.KubeadmConfig) (*clientcmdapi.Config, error) {
-	caCert, err := ioutil.ReadFile(s.ManualFlags.CaCertFile)
-	if err != nil {
-		return nil, fmt.Errorf("<node/csr> failed to load CA certificate [%s]", err)
-	}
-
-	return PerformTLSBootstrap(s, strings.Split(s.ManualFlags.ApiServerURLs, ",")[0], caCert)
-}
 
 // Create a restful client for doing the certificate signing request.
 func PerformTLSBootstrap(s *kubeadmapi.KubeadmConfig, apiEndpoint string, caCert []byte) (*clientcmdapi.Config, error) {
