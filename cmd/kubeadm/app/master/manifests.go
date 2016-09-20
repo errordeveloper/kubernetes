@@ -290,11 +290,6 @@ func getComponentCommand(component string, s *kubeadmapi.KubeadmConfig) (command
 			}
 		}
 
-		// Only append the --cloud-config option if there's a such file
-		if _, err := os.Stat(DefaultCloudConfigPath); err == nil {
-			command = append(command, "--cloud-config="+DefaultCloudConfigPath)
-		}
-
 		if s.InitFlags.PodNetwork.CIDR.IP != nil {
 			// Let the controller-manager allocate Node CIDRs for the Pod overlay network.
 			// Each node will get a subspace of the address CIDR provided with --cluster-cidr.

@@ -71,8 +71,8 @@ func NewCmdInit(out io.Writer, s *kubeadmapi.KubeadmConfig) *cobra.Command {
 			kubeadmapi.DefaultServicesCIDRString,
 	)
 	cmd.PersistentFlags().IPNetVar(
-		&s.InitFlags.PodNetwork.CIDR, "cluster-cidr", net.IPNet{},
-		`(optional) Use alternative range of IP addresses for the pod overlay network VIPs, e.g. 10.3.0.0/16.`+
+		&s.InitFlags.PodNetwork.CIDR, "pod-network-cidr", net.IPNet{},
+		`(optional) Specify range of IP addresses for the pod overlay network, e.g. 10.3.0.0/16.`+
 			`If set, the control plane will automatically attempt to allocate Pod network CIDRs for every node.`,
 	)
 	cmd.PersistentFlags().StringVar(
