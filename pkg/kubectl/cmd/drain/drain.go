@@ -26,6 +26,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -54,6 +55,8 @@ type DrainCmdOptions struct {
 
 	drainer   *drain.Options
 	nodeInfos []*resource.Info
+
+	ClientForMapping func(*meta.RESTMapping) (resource.RESTClient, error)
 
 	genericclioptions.IOStreams
 }
@@ -209,10 +212,7 @@ func (o *DrainCmdOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args [
 		}
 	}
 
-	o.drainer.RESTClient, err = f.RESTClient()
-	if err != nil {
-		return err
-	}
+	o.ClientForMapping = f.ClientForMapping
 
 	o.nodeInfos = []*resource.Info{}
 
@@ -313,23 +313,27 @@ func (o *DrainCmdOptions) RunDrain() error {
 }
 
 func (o *DrainCmdOptions) deleteOrEvictPodsSimple(nodeInfo *resource.Info) error {
-	pods, err := o.drainer.GetPodsForDeletion(nodeInfo)
-	if err != nil {
-		return err
+	list, errs := o.drainer.GetPodsForDeletion(nodeInfo.Name)
+	if errs != nil {
+		return utilerrors.NewAggregate(errs)
+	}
+	if warnings := list.Warnings(); warnings != "" {
+		fmt.Fprintf(o.ErrOut, "WARNING: %s\n", warnings)
 	}
 
-	err = o.deleteOrEvictPods(pods)
-	if err != nil {
-		pendingPods, newErr := o.drainer.GetPodsForDeletion(nodeInfo)
-		if newErr != nil {
-			return newErr
-		}
+	if err := o.deleteOrEvictPods(list.Pods()); err != nil {
+		pendingList, newErrs := o.drainer.GetPodsForDeletion(nodeInfo.Name)
+
 		fmt.Fprintf(o.ErrOut, "There are pending pods in node %q when an error occurred: %v\n", nodeInfo.Name, err)
-		for _, pendingPod := range pendingPods {
+		for _, pendingPod := range pendingList.Pods() {
 			fmt.Fprintf(o.ErrOut, "%s/%s\n", "pod", pendingPod.Name)
 		}
+		if newErrs != nil {
+			fmt.Fprintf(o.ErrOut, "following errors also occurred:\n%s", utilerrors.NewAggregate(newErrs))
+		}
+		return err
 	}
-	return err
+	return nil
 }
 
 // deleteOrEvictPods deletes or evicts the pods on the api server
@@ -338,7 +342,7 @@ func (o *DrainCmdOptions) deleteOrEvictPods(pods []corev1.Pod) error {
 		return nil
 	}
 
-	policyGroupVersion, err := drain.SupportEviction(o.drainer.Client)
+	policyGroupVersion, err := drain.CheckEvictionSupport(o.drainer.Client)
 	if err != nil {
 		return err
 	}
@@ -359,9 +363,9 @@ func (o *DrainCmdOptions) evictPods(pods []corev1.Pod, policyGroupVersion string
 
 	for _, pod := range pods {
 		go func(pod corev1.Pod, returnCh chan error) {
-			var err error
 			for {
-				err = o.drainer.EvictPod(pod, policyGroupVersion)
+				fmt.Fprintf(o.Out, "evicting pod %q\n", pod.Name)
+				err := o.drainer.EvictPod(pod, policyGroupVersion)
 				if err == nil {
 					break
 				} else if apierrors.IsNotFound(err) {
@@ -375,8 +379,7 @@ func (o *DrainCmdOptions) evictPods(pods []corev1.Pod, policyGroupVersion string
 					return
 				}
 			}
-			podArray := []corev1.Pod{pod}
-			_, err = o.waitForDelete(podArray, 1*time.Second, time.Duration(math.MaxInt64), true, getPodFn)
+			_, err := o.waitForDelete([]corev1.Pod{pod}, 1*time.Second, time.Duration(math.MaxInt64), true, getPodFn)
 			if err == nil {
 				returnCh <- nil
 			} else {
@@ -498,7 +501,12 @@ func (o *DrainCmdOptions) RunCordonOrUncordon(desired bool) error {
 				printObj(nodeInfo.Object, o.Out)
 			} else {
 				if !o.drainer.DryRun {
-					helper := resource.NewHelper(o.drainer.RESTClient, nodeInfo.Mapping)
+					mapping := nodeInfo.ResourceMapping()
+					client, err := o.ClientForMapping(mapping)
+					if err != nil {
+						return err
+					}
+					helper := resource.NewHelper(client, mapping)
 					node.Spec.Unschedulable = desired
 					newData, err := json.Marshal(obj)
 					if err != nil {
@@ -506,11 +514,15 @@ func (o *DrainCmdOptions) RunCordonOrUncordon(desired bool) error {
 						continue
 					}
 					patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, obj)
+					createdPatch := err == nil
 					if err != nil {
 						fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", cordonOrUncordon, nodeInfo.Name, err)
-						continue
 					}
-					_, err = helper.Patch(o.Namespace, nodeInfo.Name, types.StrategicMergePatchType, patchBytes, nil)
+					if createdPatch {
+						_, err = helper.Patch(o.Namespace, nodeInfo.Name, types.StrategicMergePatchType, patchBytes, nil)
+					} else {
+						_, err = helper.Replace(o.Namespace, nodeInfo.Name, false, obj)
+					}
 					if err != nil {
 						fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", cordonOrUncordon, nodeInfo.Name, err)
 						continue
