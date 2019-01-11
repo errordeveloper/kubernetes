@@ -48,6 +48,7 @@ import (
 	"k8s.io/client-go/rest/fake"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/kubectl/drain"
 	"k8s.io/kubernetes/pkg/kubectl/scheme"
 )
 
@@ -763,8 +764,8 @@ func TestDrain(t *testing.T) {
 							if testEviction {
 								resourceList.APIResources = []metav1.APIResource{
 									{
-										Name: EvictionSubresource,
-										Kind: EvictionKind,
+										Name: drain.EvictionSubresource,
+										Kind: drain.EvictionKind,
 									},
 								}
 							}
@@ -958,7 +959,7 @@ func TestDeletePods(t *testing.T) {
 			tf := cmdtesting.NewTestFactory()
 			defer tf.Cleanup()
 
-			o := DrainOptions{
+			o := DrainCmdOptions{
 				PrintFlags: genericclioptions.NewPrintFlags("drained").WithTypeSetter(scheme.Scheme),
 			}
 			o.Out = os.Stdout
