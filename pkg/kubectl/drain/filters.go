@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	daemonsetFatal      = "DaemonSet-managed Pods (use --ignore-daemonsets to ignore)"
-	daemonsetWarning    = "ignoring DaemonSet-managed Pods"
+	daemonSetFatal      = "DaemonSet-managed Pods (use --ignore-daemonsets to ignore)"
+	daemonSetWarning    = "ignoring DaemonSet-managed Pods"
 	localStorageFatal   = "Pods with local storage (use --delete-local-data to override)"
 	localStorageWarning = "deleting Pods with local storage"
 	unmanagedFatal      = "Pods not managed by ReplicationController, ReplicaSet, Job, DaemonSet or StatefulSet (use --force to override)"
@@ -135,7 +135,7 @@ func makePodDeleteStatusWithError(message string) podDeleteStatus {
 
 func (o *Options) makeFilters() []podFilter {
 	return []podFilter{
-		o.daemonsetFilter,
+		o.daemonSetFilter,
 		o.mirrorPodFilter,
 		o.localStorageFilter,
 		o.unreplicatedFilter,
@@ -152,7 +152,7 @@ func hasLocalStorage(pod corev1.Pod) bool {
 	return false
 }
 
-func (o *Options) daemonsetFilter(pod corev1.Pod) podDeleteStatus {
+func (o *Options) daemonSetFilter(pod corev1.Pod) podDeleteStatus {
 	// Note that we return false in cases where the pod is DaemonSet managed,
 	// regardless of flags.
 	//
@@ -177,11 +177,11 @@ func (o *Options) daemonsetFilter(pod corev1.Pod) podDeleteStatus {
 		return makePodDeleteStatusWithError(err.Error())
 	}
 
-	if !o.IgnoreDaemonsets {
-		return makePodDeleteStatusWithError(daemonsetFatal)
+	if !o.IgnoreAllDaemonSets {
+		return makePodDeleteStatusWithError(daemonSetFatal)
 	}
 
-	return makePodDeleteStatusWithWarning(false, daemonsetWarning)
+	return makePodDeleteStatusWithWarning(false, daemonSetWarning)
 }
 
 func (o *Options) mirrorPodFilter(pod corev1.Pod) podDeleteStatus {

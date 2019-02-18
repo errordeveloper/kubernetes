@@ -37,16 +37,16 @@ const (
 
 // Options contains the parameters to control the behaviour of drainer
 type Options struct {
-	Client             kubernetes.Interface
-	Force              bool
-	DryRun             bool
-	GracePeriodSeconds int
-	IgnoreDaemonsets   bool
-	Timeout            time.Duration
-	DeleteLocalData    bool
-	Selector           string
-	PodSelector        string
-	ErrOut             io.Writer
+	Client              kubernetes.Interface
+	Force               bool
+	DryRun              bool
+	GracePeriodSeconds  int
+	IgnoreAllDaemonSets bool
+	Timeout             time.Duration
+	DeleteLocalData     bool
+	Selector            string
+	PodSelector         string
+	ErrOut              io.Writer
 }
 
 // CheckEvictionSupport uses Discovery API to find out if the server support
