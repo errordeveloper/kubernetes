@@ -26,17 +26,13 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericclioptions/printers"
 	"k8s.io/cli-runtime/pkg/genericclioptions/resource"
@@ -55,8 +51,6 @@ type DrainCmdOptions struct {
 
 	drainer   *drain.Options
 	nodeInfos []*resource.Info
-
-	ClientForMapping func(*meta.RESTMapping) (resource.RESTClient, error)
 
 	genericclioptions.IOStreams
 }
@@ -211,8 +205,6 @@ func (o *DrainCmdOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args [
 			return errors.New("--pod-selector=<pod_selector> must be a valid label selector")
 		}
 	}
-
-	o.ClientForMapping = f.ClientForMapping
 
 	o.nodeInfos = []*resource.Info{}
 
@@ -475,24 +467,20 @@ func (o *DrainCmdOptions) RunCordonOrUncordon(desired bool) error {
 	}
 
 	for _, nodeInfo := range o.nodeInfos {
-		if nodeInfo.Mapping.GroupVersionKind.Kind == "Node" {
-			obj, err := scheme.Scheme.ConvertToVersion(nodeInfo.Object, nodeInfo.Mapping.GroupVersionKind.GroupVersion())
+
+		printError := func(err error) {
+			fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", cordonOrUncordon, nodeInfo.Name, err)
+		}
+
+		gvk := nodeInfo.ResourceMapping().GroupVersionKind
+		if gvk.Kind == "Node" {
+			c, err := drain.NewCordonHelper(nodeInfo.Object, scheme.Scheme, gvk)
 			if err != nil {
-				fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", cordonOrUncordon, nodeInfo.Name, err)
+				printError(err)
 				continue
 			}
-			oldData, err := json.Marshal(obj)
-			if err != nil {
-				fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", cordonOrUncordon, nodeInfo.Name, err)
-				continue
-			}
-			node, ok := obj.(*corev1.Node)
-			if !ok {
-				fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: unexpected Type%T, expected Node\n", cordonOrUncordon, nodeInfo.Name, obj)
-				continue
-			}
-			unsched := node.Spec.Unschedulable
-			if unsched == desired {
+
+			if !c.SetUnschedulableIfNeeded(desired) {
 				printObj, err := o.ToPrinter(already(desired))
 				if err != nil {
 					fmt.Fprintf(o.ErrOut, "error: %v\n", err)
@@ -501,30 +489,12 @@ func (o *DrainCmdOptions) RunCordonOrUncordon(desired bool) error {
 				printObj(nodeInfo.Object, o.Out)
 			} else {
 				if !o.drainer.DryRun {
-					mapping := nodeInfo.ResourceMapping()
-					client, err := o.ClientForMapping(mapping)
-					if err != nil {
-						return err
-					}
-					helper := resource.NewHelper(client, mapping)
-					node.Spec.Unschedulable = desired
-					newData, err := json.Marshal(obj)
-					if err != nil {
-						fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", cordonOrUncordon, nodeInfo.Name, err)
-						continue
-					}
-					patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, obj)
-					createdPatch := err == nil
-					if err != nil {
-						fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", cordonOrUncordon, nodeInfo.Name, err)
-					}
-					if createdPatch {
-						_, err = helper.Patch(o.Namespace, nodeInfo.Name, types.StrategicMergePatchType, patchBytes, nil)
-					} else {
-						_, err = helper.Replace(o.Namespace, nodeInfo.Name, false, obj)
+					err, patchErr := c.PatchOrReplace(o.drainer.Client)
+					if patchErr != nil {
+						printError(patchErr)
 					}
 					if err != nil {
-						fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", cordonOrUncordon, nodeInfo.Name, err)
+						printError(err)
 						continue
 					}
 				}
