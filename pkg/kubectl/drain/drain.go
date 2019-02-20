@@ -29,14 +29,14 @@ import (
 )
 
 const (
-	// EvictionKind represts the kind of evitions object
+	// EvictionKind represents the kind of evictions object
 	EvictionKind = "Eviction"
-	// EvictionSubresource represts the kind of evitions object as pod's subresource
+	// EvictionSubresource represents the kind of evictions object as pod's subresource
 	EvictionSubresource = "pods/eviction"
 )
 
-// Options contains the parameters to control the behaviour of drainer
-type Options struct {
+// Helper contains the parameters to control the behaviour of drainer
+type Helper struct {
 	Client              kubernetes.Interface
 	Force               bool
 	DryRun              bool
@@ -82,22 +82,22 @@ func CheckEvictionSupport(clientset kubernetes.Interface) (string, error) {
 	return "", nil
 }
 
-func (o *Options) makeDeleteOptions() *metav1.DeleteOptions {
+func (d *Helper) makeDeleteOptions() *metav1.DeleteOptions {
 	deleteOptions := &metav1.DeleteOptions{}
-	if o.GracePeriodSeconds >= 0 {
-		gracePeriodSeconds := int64(o.GracePeriodSeconds)
+	if d.GracePeriodSeconds >= 0 {
+		gracePeriodSeconds := int64(d.GracePeriodSeconds)
 		deleteOptions.GracePeriodSeconds = &gracePeriodSeconds
 	}
 	return deleteOptions
 }
 
 // DeletePod will delete the given pod, or return an error if it couldn't
-func (o *Options) DeletePod(pod corev1.Pod) error {
-	return o.Client.CoreV1().Pods(pod.Namespace).Delete(pod.Name, o.makeDeleteOptions())
+func (d *Helper) DeletePod(pod corev1.Pod) error {
+	return d.Client.CoreV1().Pods(pod.Namespace).Delete(pod.Name, d.makeDeleteOptions())
 }
 
 // EvictPod will evict the give pod, or return an error if it couldn't
-func (o *Options) EvictPod(pod corev1.Pod, policyGroupVersion string) error {
+func (d *Helper) EvictPod(pod corev1.Pod, policyGroupVersion string) error {
 	eviction := &policyv1beta1.Eviction{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: policyGroupVersion,
@@ -107,23 +107,23 @@ func (o *Options) EvictPod(pod corev1.Pod, policyGroupVersion string) error {
 			Name:      pod.Name,
 			Namespace: pod.Namespace,
 		},
-		DeleteOptions: o.makeDeleteOptions(),
+		DeleteOptions: d.makeDeleteOptions(),
 	}
 	// Remember to change change the URL manipulation func when Eviction's version change
-	return o.Client.PolicyV1beta1().Evictions(eviction.Namespace).Evict(eviction)
+	return d.Client.PolicyV1beta1().Evictions(eviction.Namespace).Evict(eviction)
 }
 
 // GetPodsForDeletion receives resource info for a node, and returns those pods as PodDeleteList,
 // or error if it cannot list pods. All pods that are ready to be deleted can be obtained with .Pods(),
 // and string with all warning can be obtained with .Warnings(), and .Errors() for all errors that
 // occurred during deletion.
-func (o *Options) GetPodsForDeletion(nodeName string) (*podDeleteList, []error) {
-	labelSelector, err := labels.Parse(o.PodSelector)
+func (d *Helper) GetPodsForDeletion(nodeName string) (*podDeleteList, []error) {
+	labelSelector, err := labels.Parse(d.PodSelector)
 	if err != nil {
 		return nil, []error{err}
 	}
 
-	podList, err := o.Client.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{
+	podList, err := d.Client.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{
 		LabelSelector: labelSelector.String(),
 		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": nodeName}).String()})
 	if err != nil {
@@ -134,7 +134,7 @@ func (o *Options) GetPodsForDeletion(nodeName string) (*podDeleteList, []error) 
 
 	for _, pod := range podList.Items {
 		var status podDeleteStatus
-		for _, filter := range o.makeFilters() {
+		for _, filter := range d.makeFilters() {
 			status = filter(pod)
 			if !status.delete {
 				// short-circuit as soon as pod is filtered out

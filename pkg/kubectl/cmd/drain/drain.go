@@ -49,7 +49,7 @@ type DrainCmdOptions struct {
 
 	Namespace string
 
-	drainer   *drain.Options
+	drainer   *drain.Helper
 	nodeInfos []*resource.Info
 
 	genericclioptions.IOStreams
@@ -149,7 +149,7 @@ func NewDrainCmdOptions(f cmdutil.Factory, ioStreams genericclioptions.IOStreams
 	return &DrainCmdOptions{
 		PrintFlags: genericclioptions.NewPrintFlags("drained").WithTypeSetter(scheme.Scheme),
 		IOStreams:  ioStreams,
-		drainer: &drain.Options{
+		drainer: &drain.Helper{
 			GracePeriodSeconds: -1,
 			ErrOut:             ioStreams.ErrOut,
 		},
