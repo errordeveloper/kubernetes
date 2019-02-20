@@ -31,47 +31,40 @@ import (
 
 // CordonHelper wraps functionality to cordon/uncordon nodes
 type CordonHelper struct {
-	object runtime.Object
-	node   *corev1.Node
-
-	oldData []byte
+	node    *corev1.Node
+	desired bool
 }
 
-// NewCordonHelper returns a new CordonHelper, or an error if given object is not a
-// node or cannot be encoded as JSON
-func NewCordonHelper(nodeObject runtime.Object, scheme *runtime.Scheme, gvk schema.GroupVersionKind) (*CordonHelper, error) {
-	nodeObject, err := scheme.ConvertToVersion(nodeObject, gvk.GroupVersion())
-	if err != nil {
-		return nil, err
+// NewCordonHelper returns a new CordonHelper
+func NewCordonHelper(node *corev1.Node) *CordonHelper {
+	return &CordonHelper{
+		node: node,
 	}
+}
 
-	// serialize original data to JSON for use to create a patch later
-	oldData, err := json.Marshal(nodeObject)
+// NewCordonHelperFromRuntimeObject returns a new CordonHelper, or an error if given object is not a
+// node or cannot be encoded as JSON
+func NewCordonHelperFromRuntimeObject(nodeObject runtime.Object, scheme *runtime.Scheme, gvk schema.GroupVersionKind) (*CordonHelper, error) {
+	nodeObject, err := scheme.ConvertToVersion(nodeObject, gvk.GroupVersion())
 	if err != nil {
 		return nil, err
 	}
 
 	node, ok := nodeObject.(*corev1.Node)
 	if !ok {
-		return nil, fmt.Errorf("unexpected Type%T, expected Node\n", nodeObject)
+		return nil, fmt.Errorf("unexpected type %T", nodeObject)
 	}
 
-	c := &CordonHelper{
-		node:    node,
-		object:  nodeObject,
-		oldData: oldData,
-	}
-
-	return c, nil
+	return NewCordonHelper(node), nil
 }
 
-// SetUnschedulableIfNeeded sets node.Spec.Unschedulable = desired and returns true,
-// or false when change isn't needed
-func (c *CordonHelper) SetUnschedulableIfNeeded(desired bool) bool {
-	if c.node.Spec.Unschedulable == desired {
+// UpdateIfRequired returns true if c.node.Spec.Unschedulable isn't already set,
+// or false when no change is needed
+func (c *CordonHelper) UpdateIfRequired(desired bool) bool {
+	c.desired = desired
+	if c.node.Spec.Unschedulable == c.desired {
 		return false
 	}
-	c.node.Spec.Unschedulable = desired
 	return true
 }
 
@@ -82,12 +75,19 @@ func (c *CordonHelper) SetUnschedulableIfNeeded(desired bool) bool {
 func (c *CordonHelper) PatchOrReplace(clientset kubernetes.Interface) (error, error) {
 	client := clientset.Core().Nodes()
 
-	newData, err := json.Marshal(c.object)
+	oldData, err := json.Marshal(c.node)
 	if err != nil {
 		return err, nil
 	}
 
-	patchBytes, patchErr := strategicpatch.CreateTwoWayMergePatch(c.oldData, newData, c.object)
+	c.node.Spec.Unschedulable = c.desired
+
+	newData, err := json.Marshal(c.node)
+	if err != nil {
+		return err, nil
+	}
+
+	patchBytes, patchErr := strategicpatch.CreateTwoWayMergePatch(oldData, newData, c.node)
 	if patchErr == nil {
 		_, err = client.Patch(c.node.Name, types.StrategicMergePatchType, patchBytes)
 	} else {

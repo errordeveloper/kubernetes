@@ -474,13 +474,13 @@ func (o *DrainCmdOptions) RunCordonOrUncordon(desired bool) error {
 
 		gvk := nodeInfo.ResourceMapping().GroupVersionKind
 		if gvk.Kind == "Node" {
-			c, err := drain.NewCordonHelper(nodeInfo.Object, scheme.Scheme, gvk)
+			c, err := drain.NewCordonHelperFromRuntimeObject(nodeInfo.Object, scheme.Scheme, gvk)
 			if err != nil {
 				printError(err)
 				continue
 			}
 
-			if !c.SetUnschedulableIfNeeded(desired) {
+			if updateRequired := c.UpdateIfRequired(desired); !updateRequired {
 				printObj, err := o.ToPrinter(already(desired))
 				if err != nil {
 					fmt.Fprintf(o.ErrOut, "error: %v\n", err)
