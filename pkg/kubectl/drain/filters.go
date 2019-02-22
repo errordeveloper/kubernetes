@@ -33,6 +33,11 @@ const (
 	localStorageWarning = "deleting Pods with local storage"
 	unmanagedFatal      = "Pods not managed by ReplicationController, ReplicaSet, Job, DaemonSet or StatefulSet (use --force to override)"
 	unmanagedWarning    = "deleting Pods not managed by ReplicationController, ReplicaSet, Job, DaemonSet or StatefulSet"
+
+	drainPodAnnotation       = "pod.alpha.kubernetes.io/drain"
+	drainPodAnnotationForce  = "force"
+	drainPodAnnotationIgnore = "ignore"
+	drainPodAnnotationNever  = "never"
 )
 
 type podDelete struct {
@@ -135,6 +140,7 @@ func makePodDeleteStatusWithError(message string) podDeleteStatus {
 
 func (d *Helper) makeFilters() []podFilter {
 	return []podFilter{
+		d.annotationFilter,
 		d.daemonSetFilter,
 		d.mirrorPodFilter,
 		d.localStorageFilter,
@@ -144,12 +150,28 @@ func (d *Helper) makeFilters() []podFilter {
 
 func hasLocalStorage(pod corev1.Pod) bool {
 	for _, volume := range pod.Spec.Volumes {
-		if volume.EmptyDir != nil {
+		if volume.EmptyDir != nil && volume.EmptyDir.Medium != "Memory" {
 			return true
 		}
 	}
 
 	return false
+}
+
+func (d *Helper) annotationFilter(pod corev1.Pod) podDeleteStatus {
+	if v, ok := pod.Annotations[drainPodAnnotation]; ok {
+		annotation := fmt.Sprintf("due to annotation %s=%s", drainPodAnnotation, v)
+		switch v {
+		case drainPodAnnotationForce:
+			return makePodDeleteStatusWithWarning(true, "forced "+annotation)
+		case drainPodAnnotationIgnore:
+			return makePodDeleteStatusWithWarning(false, "ignored "+annotation)
+		case drainPodAnnotationNever:
+			return makePodDeleteStatusWithError("cannot be drained " + annotation)
+		}
+	}
+
+	return makePodDeleteStatusOkay()
 }
 
 func (d *Helper) daemonSetFilter(pod corev1.Pod) podDeleteStatus {
@@ -175,6 +197,15 @@ func (d *Helper) daemonSetFilter(pod corev1.Pod) podDeleteStatus {
 		}
 
 		return makePodDeleteStatusWithError(err.Error())
+	}
+
+	for _, ignoreDaemonSet := range d.IgnoreDaemonSets {
+		if controllerRef.Name == ignoreDaemonSet.Name {
+			switch ignoreDaemonSet.Namespace {
+			case pod.Namespace, metav1.NamespaceAll:
+				return makePodDeleteStatusWithWarning(false, daemonSetWarning)
+			}
+		}
 	}
 
 	if !d.IgnoreAllDaemonSets {

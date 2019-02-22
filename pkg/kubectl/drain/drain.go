@@ -42,6 +42,7 @@ type Helper struct {
 	DryRun              bool
 	GracePeriodSeconds  int
 	IgnoreAllDaemonSets bool
+	IgnoreDaemonSets    []metav1.ObjectMeta
 	Timeout             time.Duration
 	DeleteLocalData     bool
 	Selector            string
