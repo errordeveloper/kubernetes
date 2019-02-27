@@ -31,20 +31,32 @@ import (
 
 // CordonHelper wraps functionality to cordon/uncordon nodes
 type CordonHelper struct {
-	node    *corev1.Node
-	desired bool
+	node   *corev1.Node
+	status DesiredCordonStatus
+}
+
+type DesiredCordonStatus string
+
+const (
+	CordonNode   DesiredCordonStatus = "cordon"
+	UncordonNode DesiredCordonStatus = "uncordon"
+)
+
+func (n DesiredCordonStatus) String() string {
+	return string(n)
 }
 
 // NewCordonHelper returns a new CordonHelper
-func NewCordonHelper(node *corev1.Node) *CordonHelper {
+func NewCordonHelper(node *corev1.Node, desired DesiredCordonStatus) *CordonHelper {
 	return &CordonHelper{
-		node: node,
+		node:   node,
+		status: desired,
 	}
 }
 
 // NewCordonHelperFromRuntimeObject returns a new CordonHelper, or an error if given object is not a
 // node or cannot be encoded as JSON
-func NewCordonHelperFromRuntimeObject(nodeObject runtime.Object, scheme *runtime.Scheme, gvk schema.GroupVersionKind) (*CordonHelper, error) {
+func NewCordonHelperFromRuntimeObject(nodeObject runtime.Object, scheme *runtime.Scheme, gvk schema.GroupVersionKind, desired DesiredCordonStatus) (*CordonHelper, error) {
 	nodeObject, err := scheme.ConvertToVersion(nodeObject, gvk.GroupVersion())
 	if err != nil {
 		return nil, err
@@ -55,17 +67,17 @@ func NewCordonHelperFromRuntimeObject(nodeObject runtime.Object, scheme *runtime
 		return nil, fmt.Errorf("unexpected type %T", nodeObject)
 	}
 
-	return NewCordonHelper(node), nil
+	return NewCordonHelper(node, desired), nil
 }
 
-// UpdateIfRequired returns true if c.node.Spec.Unschedulable isn't already set,
-// or false when no change is needed
-func (c *CordonHelper) UpdateIfRequired(desired bool) bool {
-	c.desired = desired
-	if c.node.Spec.Unschedulable == c.desired {
-		return false
-	}
-	return true
+// IsUpdateRequired returns true if c.node.Spec.Unschedulable matches desired state,
+// or false when it is
+func (c *CordonHelper) IsUpdateRequired() bool {
+	mustCordon := !c.node.Spec.Unschedulable && c.status == CordonNode
+
+	mustUncordon := c.node.Spec.Unschedulable && c.status == UncordonNode
+
+	return mustCordon || mustUncordon
 }
 
 // PatchOrReplace uses given clientset to update the node status, either by patching or
@@ -80,7 +92,12 @@ func (c *CordonHelper) PatchOrReplace(clientset kubernetes.Interface) (error, er
 		return err, nil
 	}
 
-	c.node.Spec.Unschedulable = c.desired
+	switch c.status {
+	case CordonNode:
+		c.node.Spec.Unschedulable = true
+	case UncordonNode:
+		c.node.Spec.Unschedulable = false
+	}
 
 	newData, err := json.Marshal(c.node)
 	if err != nil {

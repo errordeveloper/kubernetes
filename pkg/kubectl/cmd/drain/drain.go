@@ -75,7 +75,7 @@ func NewCmdCordon(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cob
 		Example:               cordonExample,
 		Run: func(cmd *cobra.Command, args []string) {
 			cmdutil.CheckErr(o.Complete(f, cmd, args))
-			cmdutil.CheckErr(o.RunCordonOrUncordon(true))
+			cmdutil.CheckErr(o.RunCordonOrUncordon(drain.CordonNode))
 		},
 	}
 	cmd.Flags().StringVarP(&o.drainer.Selector, "selector", "l", o.drainer.Selector, "Selector (label query) to filter on")
@@ -103,7 +103,7 @@ func NewCmdUncordon(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *c
 		Example:               uncordonExample,
 		Run: func(cmd *cobra.Command, args []string) {
 			cmdutil.CheckErr(o.Complete(f, cmd, args))
-			cmdutil.CheckErr(o.RunCordonOrUncordon(false))
+			cmdutil.CheckErr(o.RunCordonOrUncordon(drain.UncordonNode))
 		},
 	}
 	cmd.Flags().StringVarP(&o.drainer.Selector, "selector", "l", o.drainer.Selector, "Selector (label query) to filter on")
@@ -259,7 +259,7 @@ func (o *DrainCmdOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args [
 
 // RunDrain runs the 'drain' command
 func (o *DrainCmdOptions) RunDrain() error {
-	if err := o.RunCordonOrUncordon(true); err != nil {
+	if err := o.RunCordonOrUncordon(drain.CordonNode); err != nil {
 		return err
 	}
 
@@ -457,27 +457,22 @@ func (o *DrainCmdOptions) waitForDelete(pods []corev1.Pod, interval, timeout tim
 
 // RunCordonOrUncordon runs either Cordon or Uncordon.  The desired value for
 // "Unschedulable" is passed as the first arg.
-func (o *DrainCmdOptions) RunCordonOrUncordon(desired bool) error {
-	cordonOrUncordon := "cordon"
-	if !desired {
-		cordonOrUncordon = "un" + cordonOrUncordon
-	}
-
+func (o *DrainCmdOptions) RunCordonOrUncordon(desired drain.DesiredCordonStatus) error {
 	for _, nodeInfo := range o.nodeInfos {
 
 		printError := func(err error) {
-			fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", cordonOrUncordon, nodeInfo.Name, err)
+			fmt.Fprintf(o.ErrOut, "error: unable to %s node %q: %v\n", desired, nodeInfo.Name, err)
 		}
 
 		gvk := nodeInfo.ResourceMapping().GroupVersionKind
 		if gvk.Kind == "Node" {
-			c, err := drain.NewCordonHelperFromRuntimeObject(nodeInfo.Object, scheme.Scheme, gvk)
+			c, err := drain.NewCordonHelperFromRuntimeObject(nodeInfo.Object, scheme.Scheme, gvk, desired)
 			if err != nil {
 				printError(err)
 				continue
 			}
 
-			if updateRequired := c.UpdateIfRequired(desired); !updateRequired {
+			if updateRequired := c.IsUpdateRequired(); !updateRequired {
 				printObj, err := o.ToPrinter(already(desired))
 				if err != nil {
 					fmt.Fprintf(o.ErrOut, "error: %v\n", err)
@@ -517,16 +512,10 @@ func (o *DrainCmdOptions) RunCordonOrUncordon(desired bool) error {
 
 // already() and changed() return suitable strings for {un,}cordoning
 
-func already(desired bool) string {
-	if desired {
-		return "already cordoned"
-	}
-	return "already uncordoned"
+func already(desired drain.DesiredCordonStatus) string {
+	return fmt.Sprintf("already %sed", desired.String())
 }
 
-func changed(desired bool) string {
-	if desired {
-		return "cordoned"
-	}
-	return "uncordoned"
+func changed(desired drain.DesiredCordonStatus) string {
+	return fmt.Sprintf("%sed", desired.String())
 }
