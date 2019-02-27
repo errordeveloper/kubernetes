@@ -151,7 +151,6 @@ func NewDrainCmdOptions(f cmdutil.Factory, ioStreams genericclioptions.IOStreams
 		IOStreams:  ioStreams,
 		drainer: &drain.Helper{
 			GracePeriodSeconds: -1,
-			ErrOut:             ioStreams.ErrOut,
 		},
 	}
 }
@@ -264,6 +263,10 @@ func (o *DrainCmdOptions) RunDrain() error {
 		return err
 	}
 
+	if err := o.drainer.CanUseEvictions(); err != nil {
+		return err
+	}
+
 	printObj, err := o.ToPrinter("drained")
 	if err != nil {
 		return err
@@ -334,30 +337,24 @@ func (o *DrainCmdOptions) deleteOrEvictPods(pods []corev1.Pod) error {
 		return nil
 	}
 
-	policyGroupVersion, err := drain.CheckEvictionSupport(o.drainer.Client)
-	if err != nil {
-		return err
-	}
-
 	getPodFn := func(namespace, name string) (*corev1.Pod, error) {
 		return o.drainer.Client.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{})
 	}
 
-	if len(policyGroupVersion) > 0 {
-		return o.evictPods(pods, policyGroupVersion, getPodFn)
-	} else {
-		return o.deletePods(pods, getPodFn)
+	if o.drainer.UseEvictions {
+		return o.evictPods(pods, getPodFn)
 	}
+	return o.deletePods(pods, getPodFn)
 }
 
-func (o *DrainCmdOptions) evictPods(pods []corev1.Pod, policyGroupVersion string, getPodFn func(namespace, name string) (*corev1.Pod, error)) error {
+func (o *DrainCmdOptions) evictPods(pods []corev1.Pod, getPodFn func(namespace, name string) (*corev1.Pod, error)) error {
 	returnCh := make(chan error, 1)
 
 	for _, pod := range pods {
 		go func(pod corev1.Pod, returnCh chan error) {
 			for {
 				fmt.Fprintf(o.Out, "evicting pod %q\n", pod.Name)
-				err := o.drainer.EvictPod(pod, policyGroupVersion)
+				err := o.drainer.EvictPod(pod)
 				if err == nil {
 					break
 				} else if apierrors.IsNotFound(err) {
@@ -371,7 +368,7 @@ func (o *DrainCmdOptions) evictPods(pods []corev1.Pod, policyGroupVersion string
 					return
 				}
 			}
-			_, err := o.waitForDelete([]corev1.Pod{pod}, 1*time.Second, time.Duration(math.MaxInt64), true, getPodFn)
+			_, err := o.waitForDelete([]corev1.Pod{pod}, 1*time.Second, time.Duration(math.MaxInt64), getPodFn)
 			if err == nil {
 				returnCh <- nil
 			} else {
@@ -420,13 +417,13 @@ func (o *DrainCmdOptions) deletePods(pods []corev1.Pod, getPodFn func(namespace,
 			return err
 		}
 	}
-	_, err := o.waitForDelete(pods, 1*time.Second, globalTimeout, false, getPodFn)
+	_, err := o.waitForDelete(pods, 1*time.Second, globalTimeout, getPodFn)
 	return err
 }
 
-func (o *DrainCmdOptions) waitForDelete(pods []corev1.Pod, interval, timeout time.Duration, usingEviction bool, getPodFn func(string, string) (*corev1.Pod, error)) ([]corev1.Pod, error) {
+func (o *DrainCmdOptions) waitForDelete(pods []corev1.Pod, interval, timeout time.Duration, getPodFn func(string, string) (*corev1.Pod, error)) ([]corev1.Pod, error) {
 	var verbStr string
-	if usingEviction {
+	if o.drainer.UseEvictions {
 		verbStr = "evicted"
 	} else {
 		verbStr = "deleted"
