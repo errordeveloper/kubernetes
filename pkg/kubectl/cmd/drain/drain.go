@@ -151,7 +151,6 @@ func NewDrainCmdOptions(f cmdutil.Factory, ioStreams genericclioptions.IOStreams
 		IOStreams:  ioStreams,
 		drainer: &drain.Helper{
 			GracePeriodSeconds: -1,
-			ErrOut:             ioStreams.ErrOut,
 		},
 	}
 }
@@ -334,8 +333,7 @@ func (o *DrainCmdOptions) deleteOrEvictPods(pods []corev1.Pod) error {
 		return nil
 	}
 
-	policyGroupVersion, err := drain.CheckEvictionSupport(o.drainer.Client)
-	if err != nil {
+	if err := o.drainer.CanUseEvictions(); err != nil {
 		return err
 	}
 
@@ -343,21 +341,20 @@ func (o *DrainCmdOptions) deleteOrEvictPods(pods []corev1.Pod) error {
 		return o.drainer.Client.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{})
 	}
 
-	if len(policyGroupVersion) > 0 {
-		return o.evictPods(pods, policyGroupVersion, getPodFn)
-	} else {
-		return o.deletePods(pods, getPodFn)
+	if o.drainer.UseEvictions {
+		return o.evictPods(pods, getPodFn)
 	}
+	return o.deletePods(pods, getPodFn)
 }
 
-func (o *DrainCmdOptions) evictPods(pods []corev1.Pod, policyGroupVersion string, getPodFn func(namespace, name string) (*corev1.Pod, error)) error {
+func (o *DrainCmdOptions) evictPods(pods []corev1.Pod, getPodFn func(namespace, name string) (*corev1.Pod, error)) error {
 	returnCh := make(chan error, 1)
 
 	for _, pod := range pods {
 		go func(pod corev1.Pod, returnCh chan error) {
 			for {
 				fmt.Fprintf(o.Out, "evicting pod %q\n", pod.Name)
-				err := o.drainer.EvictPod(pod, policyGroupVersion)
+				err := o.drainer.EvictPod(pod)
 				if err == nil {
 					break
 				} else if apierrors.IsNotFound(err) {
@@ -461,9 +458,9 @@ func (o *DrainCmdOptions) waitForDelete(pods []corev1.Pod, interval, timeout tim
 // RunCordonOrUncordon runs either Cordon or Uncordon.  The desired value for
 // "Unschedulable" is passed as the first arg.
 func (o *DrainCmdOptions) RunCordonOrUncordon(desired bool) error {
-	cordonOrUncordon := "cordon"
+	cordonOrUncordon := drain.CordonNode
 	if !desired {
-		cordonOrUncordon = "un" + cordonOrUncordon
+		cordonOrUncordon = drain.UncordonNode
 	}
 
 	for _, nodeInfo := range o.nodeInfos {
@@ -474,13 +471,13 @@ func (o *DrainCmdOptions) RunCordonOrUncordon(desired bool) error {
 
 		gvk := nodeInfo.ResourceMapping().GroupVersionKind
 		if gvk.Kind == "Node" {
-			c, err := drain.NewCordonHelperFromRuntimeObject(nodeInfo.Object, scheme.Scheme, gvk)
+			c, err := drain.NewCordonHelperFromRuntimeObject(nodeInfo.Object, scheme.Scheme, gvk, cordonOrUncordon)
 			if err != nil {
 				printError(err)
 				continue
 			}
 
-			if updateRequired := c.UpdateIfRequired(desired); !updateRequired {
+			if updateRequired := c.IsUpdateRequired(); !updateRequired {
 				printObj, err := o.ToPrinter(already(desired))
 				if err != nil {
 					fmt.Fprintf(o.ErrOut, "error: %v\n", err)

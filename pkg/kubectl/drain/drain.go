@@ -17,7 +17,6 @@ limitations under the License.
 package drain
 
 import (
-	"io"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -37,49 +36,54 @@ const (
 
 // Helper contains the parameters to control the behaviour of drainer
 type Helper struct {
-	Client              kubernetes.Interface
-	Force               bool
-	DryRun              bool
-	GracePeriodSeconds  int
+	Selector    string
+	PodSelector string
+
+	Client kubernetes.Interface
+
+	Force  bool
+	DryRun bool
+
+	GracePeriodSeconds int
+	Timeout            time.Duration
+
 	IgnoreAllDaemonSets bool
-	Timeout             time.Duration
+	IgnoreDaemonSets    []metav1.ObjectMeta
 	DeleteLocalData     bool
-	Selector            string
-	PodSelector         string
-	ErrOut              io.Writer
+
+	policyAPIGroupVersion string
+	UseEvictions          bool
 }
 
-// CheckEvictionSupport uses Discovery API to find out if the server support
-// eviction subresource If support, it will return its groupVersion; Otherwise,
-// it will return an empty string
-func CheckEvictionSupport(clientset kubernetes.Interface) (string, error) {
-	discoveryClient := clientset.Discovery()
+// CanUseEvictions uses Discovery API to find out if evictions are supported
+func (d *Helper) CanUseEvictions() error {
+	discoveryClient := d.Client.Discovery()
 	groupList, err := discoveryClient.ServerGroups()
 	if err != nil {
-		return "", err
+		return err
 	}
 	foundPolicyGroup := false
-	var policyGroupVersion string
 	for _, group := range groupList.Groups {
 		if group.Name == "policy" {
 			foundPolicyGroup = true
-			policyGroupVersion = group.PreferredVersion.GroupVersion
+			d.policyAPIGroupVersion = group.PreferredVersion.GroupVersion
 			break
 		}
 	}
 	if !foundPolicyGroup {
-		return "", nil
+		return nil
 	}
 	resourceList, err := discoveryClient.ServerResourcesForGroupVersion("v1")
 	if err != nil {
-		return "", err
+		return err
 	}
 	for _, resource := range resourceList.APIResources {
 		if resource.Name == EvictionSubresource && resource.Kind == EvictionKind {
-			return policyGroupVersion, nil
+			d.UseEvictions = true
+			return nil
 		}
 	}
-	return "", nil
+	return nil
 }
 
 func (d *Helper) makeDeleteOptions() *metav1.DeleteOptions {
@@ -91,16 +95,21 @@ func (d *Helper) makeDeleteOptions() *metav1.DeleteOptions {
 	return deleteOptions
 }
 
-// DeletePod will delete the given pod, or return an error if it couldn't
-func (d *Helper) DeletePod(pod corev1.Pod) error {
-	return d.Client.CoreV1().Pods(pod.Namespace).Delete(pod.Name, d.makeDeleteOptions())
+// EvictOrDeletePod will evict pod if policy API is available, otherwise deletes it
+// NOTE: CanUseEvictions must be called prior to this
+func (d *Helper) EvictOrDeletePod(pod corev1.Pod) error {
+	if d.UseEvictions {
+		return d.EvictPod(pod)
+	}
+	return d.DeletePod(pod)
 }
 
 // EvictPod will evict the give pod, or return an error if it couldn't
-func (d *Helper) EvictPod(pod corev1.Pod, policyGroupVersion string) error {
+// NOTE: CanUseEvictions must be called prior to this
+func (d *Helper) EvictPod(pod corev1.Pod) error {
 	eviction := &policyv1beta1.Eviction{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: policyGroupVersion,
+			APIVersion: d.policyAPIGroupVersion,
 			Kind:       EvictionKind,
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -109,14 +118,18 @@ func (d *Helper) EvictPod(pod corev1.Pod, policyGroupVersion string) error {
 		},
 		DeleteOptions: d.makeDeleteOptions(),
 	}
-	// Remember to change change the URL manipulation func when Eviction's version change
 	return d.Client.PolicyV1beta1().Evictions(eviction.Namespace).Evict(eviction)
 }
 
-// GetPodsForDeletion receives resource info for a node, and returns those pods as PodDeleteList,
-// or error if it cannot list pods. All pods that are ready to be deleted can be obtained with .Pods(),
-// and string with all warning can be obtained with .Warnings(), and .Errors() for all errors that
-// occurred during deletion.
+// DeletePod will delete the given pod, or return an error if it couldn't
+func (d *Helper) DeletePod(pod corev1.Pod) error {
+	return d.Client.CoreV1().Pods(pod.Namespace).Delete(pod.Name, d.makeDeleteOptions())
+}
+
+// GetPodsForDeletion lists all pods on a given node, filters those using the default
+// filters, and returns podDeleteList along with any errors. All pods that are ready
+// to be deleted can be obtained with .Pods(), and string with all warning can be obtained
+// with .Warnings()
 func (d *Helper) GetPodsForDeletion(nodeName string) (*podDeleteList, []error) {
 	labelSelector, err := labels.Parse(d.PodSelector)
 	if err != nil {
